@@ -1,24 +1,26 @@
 package test
 
-import "github.com/jeek120/ngorm/base"
+import (
+	"github.com/jeek120/ngorm/basepo"
+)
 
 type User struct {
-	*base.Tag
+	*basepo.Tag
 	// 名称
-	Name string				// 名称
-	Passwd string 			// 密码
-	Age 	int64			// 年龄
+	Name string				`json:"name" idx:"name(10)"`	// 名称
+	Passwd string
+	Age 	int64
 }
 
 type (
 	Group struct {
-		*base.Tag
+		*basepo.Tag
 		name string			// 名称
 	}
 )
 
 type (
 	UserGroup struct {
-		*base.Edge			// 用户所属群组
+		*basepo.Edge			// 用户所属群组
 	}
 )

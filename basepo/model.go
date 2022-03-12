@@ -1,6 +1,8 @@
-package base
+package basepo
 
-import "github.com/jeek120/ngorm/util"
+import (
+	"github.com/jeek120/ngorm/util/snowflake"
+)
 
 type ITag interface {
 	TagName()	string
@@ -24,8 +26,9 @@ type Edge struct {
 	rank 	int
 }
 
-func (t *Tag)GenId() {
-	t.id = util.SnowNode.Generate().Int64()
+func (t *Tag)GenId() int64 {
+	t.id = snowflake.Id().Generate().Int64()
+	return t.id
 }
 
 func (t *Tag)SetId(id int64) {

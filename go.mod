@@ -1,6 +1,6 @@
 module github.com/jeek120/ngorm
 
-go 1.18
+go 1.17
 
 require (
 	github.com/vesoft-inc/nebula-go/v3 v3.0.0
