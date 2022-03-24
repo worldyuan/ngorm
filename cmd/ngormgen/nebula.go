@@ -240,8 +240,10 @@ func (g *Generator) generate(dir string, allowTypeNames []string) {
 		g.funcAllFieldsWithId(&s)
 		g.funcTagName(&s)
 		g.funcEdgeName(&s)
+		g.funcNqlNameValues(&s)
 		g.funcNqlValues(&s)
 		g.funcNqlNames(&s)
+		g.funcNqlBind(&s)
 
 		// 创建语句
 		g.CreateTag(&s)
@@ -256,6 +258,7 @@ func (g *Generator) generate(dir string, allowTypeNames []string) {
 		g.funcBindRecord(&s)
 		g.funcBindResult(&s)
 		g.funcConditionItem(&s)
+		g.funcBindOne(&s)
 		g.funcOne(&s)
 		g.funcList(&s)
 
@@ -263,6 +266,7 @@ func (g *Generator) generate(dir string, allowTypeNames []string) {
 		g.funcRemoveTag(&s)
 		g.funcRemoveEdge(&s)
 	}
+	g.Create()
 }
 // format returns the gofmt-ed contents of the Generator's buffer.
 func (g *Generator) format() []byte {
@@ -376,13 +380,13 @@ func (f *Field) toNebulaType() string {
 }
 
 
-func (f *Field) funcBindResult (name string) string {
+func (f *Field) funcBindResult (struct_name, prefix string) string {
 	var val string
 	var set string
 	if f.nickname == IDFIELD.nickname {
-		set = `m.SetId(f)`
+		set = struct_name + `.SetId(f)`
 	}else{
-		set = `m.`+f.name+` = `+f.typeStr+`(f)`
+		set = struct_name + `.`+f.name+` = `+f.typeStr+`(f)`
 	}
 	if f.typeStr == "string" {
 		val = "AsString()"
@@ -405,7 +409,7 @@ func (f *Field) funcBindResult (name string) string {
 	}
 
 	return `
-val,err := record.GetValueByColName("`+f.nickname+`")
+val,err := record.GetValueByColName("`+ prefix +f.nickname+`")
 			if err != nil {
 				panic(err)
 			}
@@ -465,16 +469,30 @@ func (g *Generator)funcConditionItem(s *Struct) {
 	g.Printlnf("}")
 }
 
+
+func (g *Generator)funcBindOne(s *Struct) {
+	g.Printlnf(`func (m *`+s.name +`) BindOne(result *nebula_go.ResultSet,fields ...string) {`)
+	g.Printlnf(`if result.GetRowSize() == 0 {`)
+	g.Printlnf(`	return`)
+	g.Printlnf(`}`)
+	g.Printlnf(`record,err := result.GetRowValuesByIndex(0)`)
+	g.Printlnf(`if err != nil {`)
+	g.Printlnf(`panic(err)`)
+	g.Printlnf(`}`)
+	g.Printlnf(`m.BindRecord(record)`)
+	g.Printlnf(`}`)
+}
+
 func (g *Generator)funcOne(s *Struct) {
 	g.Printlnf(`func (m *`+s.name +`) One(session *nebula_go.Session,fields ...string) {`)
 	g.Printlnf(`var where string`)
 	g.Printlnf(`if len(fields) > 0 {`)
 	g.Printlnf(`where = " WHERE " + strings.Join(m.ConditionItem(fields...), ",")`)
 	g.Printlnf(`}`)
-	g.Printlnf(`nql := "MATCH (v:`+s.nickname +`) " + where + " return id(v) as id" + `)
+	g.Printlnf(`nql := "MATCH (v:`+s.nickname +`) " + where + " return id(v) as `+ s.nickname+`_id" + `)
 	g.Printlnf("`")
 	for _,f := range s.fields {
-		g.Printlnf(`	,v.` + s.nickname + `.` + f.nickname + ` as ` + f.nickname)
+		g.Printlnf(`	,v.` + s.nickname + `.` + f.nickname + ` as ` + s.nickname + `_` + f.nickname)
 	}
 	g.Printlnf(" limit 1`")
 	g.Printlnf(`result,err := session.Execute(nql)`)
@@ -499,9 +517,9 @@ func (g *Generator)funcList(s *Struct) {
 	g.Printlnf(`if len(fields) > 0 {`)
 	g.Printlnf(`where = " WHERE " + strings.Join(m.ConditionItem(fields...), ",")`)
 	g.Printlnf(`}`)
-	g.Printlnf(`nql := "MATCH (v:`+s.nickname +`) " + where + " return id(v) as id" +`)
+	g.Printlnf(`nql := "MATCH (v:`+s.nickname +`) " + where + " return id(v) as `+s.nickname+`_id" +`)
 	for _,f := range s.fields {
-		g.Printlnf(`			",v.` + s.nickname + `.` + f.nickname + ` as ` + f.nickname + `" +`)
+		g.Printlnf(`			",v.` + s.nickname + `.` + f.nickname + ` as ` + s.nickname + `_` + f.nickname + `" +`)
 	}
 	g.Printlnf(` " SKIP " + strconv.FormatInt(offset, 10) + " LIMIT " + strconv.FormatInt(size, 10)`)
 	g.Printlnf(`result,err := session.Execute(nql)`)
@@ -590,7 +608,7 @@ func (g *Generator)funcBindRecord(s *Struct) {
 	g.Printlnf(`fields = m.AllFieldsWithId()`)
 	g.Printlnf(`}`)
 	if s.isTag {
-		g.Printlnf(IDFIELD.funcBindResult("m"))
+		g.Printlnf(IDFIELD.funcBindResult("m", s.nickname + "_"))
 	}
 	if len(s.fields) > 0 {
 		g.Printlnf("	for _, f := range fields {")
@@ -599,7 +617,7 @@ func (g *Generator)funcBindRecord(s *Struct) {
 				g.Printf(`else `)
 			}
 			g.Printlnf(`if f == "`+f.nickname+`" {`)
-			g.Printlnf(f.funcBindResult("m"))
+			g.Printlnf(f.funcBindResult("m", s.nickname + "_"))
 			g.Printf(`}`)
 		}
 		g.Printlnf("\n	}")
@@ -653,6 +671,46 @@ func (g *Generator)funcNqlNames(s *Struct) {
 	g.Printlnf(`}`)
 }
 
+func (g *Generator)funcNqlNameValues(s *Struct) {
+	g.Printlnf(`func (m *`+s.name +`) NqlNameValues(split string, fields ...string) []string {`)
+	g.Printlnf("	values := make([]string, 0)")
+	if len(s.fields) > 0 {
+		g.Printlnf("	for _, f := range fields {")
+		for i,f := range s.fields{
+			if i != 0 {
+				g.Printf(`else `)
+			}
+			g.Printlnf(`if f == "`+f.nickname+`" {`)
+			g.Printlnf(`values = append(values, "` + f.nickname+ `" + split + ` + f.funcValue("m") + `)`)
+			g.Printf("}")
+		}
+		g.Printlnf("\n	}")
+	}
+
+	g.Printlnf(`	return values`)
+	g.Printlnf(`}`)
+}
+
+func (g *Generator)funcNqlBind(s *Struct) {
+	g.Printlnf(`func (m *`+s.name +`) NqlBind(structName string, fields ...string) []string {`)
+	g.Printlnf("	values := make([]string, 0)")
+	if len(s.fields) > 0 {
+		g.Printlnf("	for _, f := range fields {")
+		for i,f := range s.fields{
+			if i != 0 {
+				g.Printf(`else `)
+			}
+			g.Printlnf(`if f == "`+f.nickname+`" {`)
+			g.Printlnf(`values = append(values, structName + ".` + s.nickname + `.` + f.nickname + ` as ` + s.nickname + "_" +f.nickname+`")`)
+			g.Printf("}")
+		}
+		g.Printlnf("\n	}")
+	}
+
+	g.Printlnf(`	return values`)
+	g.Printlnf(`}`)
+}
+
 func (g *Generator)funcNqlValues(s *Struct) {
 	g.Printlnf(`func (m *`+s.name +`) NqlValues(fields ...string) string {`)
 	g.Printlnf("	var values string")
@@ -670,6 +728,16 @@ func (g *Generator)funcNqlValues(s *Struct) {
 	}
 
 	g.Printlnf(`	return values[1:]`)
+	g.Printlnf(`}`)
+}
+
+func (g *Generator)Create() {
+	g.Printlnf(`func Create(session *nebula_go.Session) {`)
+	for _,s := range g.Structs {
+		if s.isTag || s.isEdge {
+			g.Printlnf(`(&`+s.name+`{}).Create(session)`)
+		}
+	}
 	g.Printlnf(`}`)
 }
 
