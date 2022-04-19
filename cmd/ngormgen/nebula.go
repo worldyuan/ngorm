@@ -404,6 +404,8 @@ func (f *Field) funcBindResult(struct_name, prefix string) string {
 		val = "AsFloat()"
 	} else if f.typeStr == "float32" {
 		val = "AsFloat()"
+	} else if f.typeStr == "bool" {
+		val = "AsBool()"
 	} else {
 		panic(f.typeStr + "unsupport")
 	}
@@ -437,13 +439,15 @@ func (f *Field) funcValue(structName string) string {
 		return `strconv.FormatFloat(` + structName + `.` + f.name + `, 'E', -1, 64)`
 	} else if f.typeStr == "float32" {
 		return `strconv.FormatFloat(float64(` + structName + `.` + f.name + `), 'E', -1, 32)`
+	} else if f.typeStr == "bool" {
+		return `fmt.Sprintf("%v", ` + structName + `.` + f.name + `)`
 	}
-	panic(f.typeStr + "unsupport")
+	panic(f.typeStr + " unsupport")
 }
 
 func (f *Field) funcEq(prefix string, structName string, nqlVarName string) string {
 	if f.name == IDFIELD.name {
-		return "id(" + nqlVarName + ")==" + f.funcValue(structName)
+		return "\"id(" + nqlVarName + ")==\"+strconv.FormatInt(" + structName + ".Id(), 10)"
 	}
 	return "\"" + prefix + f.nickname + "==\"+" + f.funcValue(structName)
 }
@@ -451,9 +455,15 @@ func (f *Field) funcEq(prefix string, structName string, nqlVarName string) stri
 func (g *Generator) funcConditionItem(s *Struct) {
 	g.Printlnf(`func (m *` + s.name + `) ConditionItem(fields ...string) []string {`)
 	g.Printlnf(`result := make([]string, 0)`)
-	if len(s.fields) > 0 {
+	fields := s.fields
+	if s.isTag {
+		fields = append(fields, *IDFIELD)
+	}
+
+	if len(fields) > 0 {
 		g.Printlnf("	for _, f := range fields {")
-		for i, f := range s.fields {
+
+		for i, f := range fields {
 			if i != 0 {
 				g.Printf(`else `)
 			}
